@@ -41,8 +41,7 @@ import com.google.common.io.Files;
 import com.mw.plugins.excel.ImportExcel;
 import com.mw.plugins.jdbc.JdbcDao;
 import com.mw.utils.DateTimeUtils;
-//import com.mw.etl.ctdb.rtdb.sensor.Scada2015Sensor;
-
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 @Service
 public class InputDataService {
 	
@@ -77,7 +76,13 @@ public class InputDataService {
 	
 	@Autowired
 	private JdbcDao jdbcDao;
+	
+	@Autowired
+	private JdbcDao scaDao;
+	
 	private static final Logger logger = LoggerFactory.getLogger(InputDataService.class);
+	@Resource
+	public NamedParameterJdbcTemplate jtCTDB;
 	
 	@Scheduled(cron = "${cron.inputdata.save}")
 	public void saveData() throws Exception {
@@ -226,8 +231,10 @@ public class InputDataService {
 			StringBuilder ymdh = new StringBuilder(yyyymmddStr).append(" ").append(hh);
 			yyyymmdd = DateTimeUtils.str2Date(ymdh.toString(), "yyyy-MM-dd HH");
 			// }
-
-			map.put(FIELDNAME_SENSORDD, yyyymmdd);
+		
+	        // SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	        // String timeFormat = sdf.format(yyyymmdd);
+			 map.put(FIELDNAME_SENSORDD, yyyymmdd);
 		}
 
 		if (errorMsgs.size() > 0) {
@@ -243,11 +250,15 @@ public class InputDataService {
 			SqlParameterSource param = new MapSqlParameterSource(rowMap);
 			String sql = null;
 			try {
-				sql = getAddSql(tableName,rowMap,cellNames);
-				jdbcDao.update(sql, param);
+				sql = getAddSql(tableName,rowMap);
+				System.out.println(sql);
+				//sql="insert into ZH (sensordd, ZH_source_HW_NH3N) values (:sensordd,:ZH_source_HW_NH3N)";
+				//zhdata.setSensorDd("2020-02-15 09:00:00");
+				//jdbcDao.updOne(sql, ZhData.class);
+				jtCTDB.update(sql, param);
 			} catch (DuplicateKeyException e) {
 				// logger.info("DuplicateKeyException-> rowMap:{}", rowMap);
-				sql = getUpdSql(tableName, rowMap,cellNames);
+				sql = getUpdSql(tableName, rowMap);
 				jdbcDao.update(sql, param);
 			}
              logger.info("sql-> {}", sql);
@@ -276,29 +287,31 @@ public class InputDataService {
 	}
 	
 	//insert file update
-	private String getAddSql(String tableName, Map<String, Object> rowMap,String[] cellNames) {
+	private String getAddSql(String tableName, Map<String, Object> rowMap) {
 		StringBuilder fieldNameBuilder = new StringBuilder();
 		StringBuilder fieldValueBuilder = new StringBuilder();
-	
-		for(int i=0;i<rowMap.size();i++) {
-			Object val = rowMap.get(cellNames[i]);
+		int i=0;
+		for(String key : rowMap.keySet()){
+			Object val = rowMap.get(key);
 			if (val == null) {
 				continue;
 			}
 			if (i != 0) {
 				fieldNameBuilder.append(", ");
 				fieldValueBuilder.append(", ");
-			}			
-			fieldNameBuilder.append(cellNames[i]);
-			fieldValueBuilder.append(":").append(cellNames[i]);
+			}		
+			i++;
+			fieldNameBuilder.append(key);
+			fieldValueBuilder.append(":").append(key);
 		}
-		StringBuilder sqlSb = new StringBuilder("insert into scada_data.");
+		//StringBuilder sqlSb = new StringBuilder("insert into scada_data.");
+		StringBuilder sqlSb = new StringBuilder("insert into ");
 		sqlSb.append(tableName);
 		sqlSb.append("(");
-		sqlSb.append(FIELDNAME_SENSORDD).append(", ");
+		//sqlSb.append(FIELDNAME_SENSORDD).append(", ");
 		sqlSb.append(fieldNameBuilder);
 		sqlSb.append(") values(");
-		sqlSb.append(":").append(FIELDNAME_SENSORDD).append(", ");
+		//sqlSb.append(":").append(FIELDNAME_SENSORDD).append(", ");
 		sqlSb.append(fieldValueBuilder);
 		sqlSb.append(")");
 
@@ -318,18 +331,19 @@ public class InputDataService {
 	}
 	
 	//update file data
-	private String getUpdSql(String tableName, Map<String, Object> rowMap,String[] cellNames) {
+	private String getUpdSql(String tableName, Map<String, Object> rowMap) {
 		StringBuilder fieldNameBuilder = new StringBuilder();
-		for(int i=0;i<rowMap.size();i++) {
-			Object val = rowMap.get(cellNames[i]);
+		int i =0;
+		for(String key : rowMap.keySet()) {
+			Object val = rowMap.get(key);
 			if (val == null) {
 				continue;
 			}
 			if (i != 0) {
 				fieldNameBuilder.append(", ");
 			}
-
-			fieldNameBuilder.append(cellNames[i]).append("=").append(":").append(cellNames[i]);
+			i++;
+			fieldNameBuilder.append(key).append("=").append(":").append(key);
 		}
 		StringBuilder sqlSb = new StringBuilder("update scada_data.");
 		sqlSb.append(tableName);
