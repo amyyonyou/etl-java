@@ -75,10 +75,7 @@ public class InputDataService {
 	private final static String[] cellNamesOfS4 = { ITAG_YYYYMMDD, "ZH_Res_Lapa_level", "ZH_Res_Lapa_rainfall", "ZH_Res_Lapa_salinity", "ZH_Res_Lapa_capacity10000", "ZH_Res_YK_level", "ZH_Res_YK_rainfall", "ZH_Res_YK_salinity", "ZH_Res_YK_capacity10000", "ZH_Res_SDK_level", "ZH_Res_SDK_rainfall", "ZH_Res_SDK_salinity", "ZH_Res_SDK_capacity10000", "ZH_Res_NP_level", "ZH_Res_NP_rainfall", "ZH_Res_NP_up_salinity", "ZH_Res_NP_down_salinity", "ZH_Res_NP_capacity10000" };
 	
 	@Autowired
-	private JdbcDao jdbcDao;
-	
-	@Autowired
-	private JdbcDao scaDao;
+	private JdbcDao scadaDao;	
 	
 	private static final Logger logger = LoggerFactory.getLogger(InputDataService.class);
 	@Resource
@@ -86,10 +83,6 @@ public class InputDataService {
 	
 	@Scheduled(cron = "${cron.inputdata.save}")
 	public void saveData() throws Exception {
-		System.out.println(filePathOfZhRaw);
-		System.out.println(filePathOfBak);
-		System.out.println(errorLogFile);
-		
 		List<Map<String, Object>> dataList = null;
 
 		File folderOfZhRaw = new File(filePathOfZhRaw);
@@ -102,23 +95,21 @@ public class InputDataService {
 			}
 
 			dataList = parseData(fileOfZhRaw, 0, headerNbOfS0, cellNamesOfS0, MAX_READDAYS);
-			convert(tableNameOfZH, dataList,cellNamesOfS0);
+			convert(tableNameOfZH, dataList);
 
-			/*
-			 * dataList = parseData(fileOfZhRaw, 1, headerNbOfS1, cellNamesOfS1,
-			 * MAX_READDAYS); convert(tableNameOfZH, dataList);
-			 * 
-			 * dataList = parseData(fileOfZhRaw, 2, headerNbOfS2, cellNamesOfS2,
-			 * MAX_READDAYS); convert(tableNameOfZH, dataList);
-			 * 
-			 * dataList = parseData(fileOfZhRaw, 3, headerNbOfS3, cellNamesOfS3,
-			 * MAX_READDAYS); convert(tableNameOfZH, dataList);
-			 * 
-			 * dataList = parseData(fileOfZhRaw, 4, headerNbOfS4, cellNamesOfS4,
-			 * MAX_READDAYS); convert(tableNameOfZH, dataList);
-			 * 
-			 * moveTo(fileOfZhRaw);
-			 */
+			dataList = parseData(fileOfZhRaw, 1, headerNbOfS1, cellNamesOfS1, MAX_READDAYS);
+			convert(tableNameOfZH, dataList);
+
+			dataList = parseData(fileOfZhRaw, 2, headerNbOfS2, cellNamesOfS2, MAX_READDAYS);
+			convert(tableNameOfZH, dataList);
+
+			dataList = parseData(fileOfZhRaw, 3, headerNbOfS3, cellNamesOfS3, MAX_READDAYS);
+			convert(tableNameOfZH, dataList);
+
+			dataList = parseData(fileOfZhRaw, 4, headerNbOfS4, cellNamesOfS4, MAX_READDAYS);
+			convert(tableNameOfZH, dataList);
+
+			moveTo(fileOfZhRaw);
 		}
 
 	}
@@ -232,8 +223,6 @@ public class InputDataService {
 			yyyymmdd = DateTimeUtils.str2Date(ymdh.toString(), "yyyy-MM-dd HH");
 			// }
 		
-	        // SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-	        // String timeFormat = sdf.format(yyyymmdd);
 			 map.put(FIELDNAME_SENSORDD, yyyymmdd);
 		}
 
@@ -245,27 +234,22 @@ public class InputDataService {
 		return list;
 	}
 
-	public void convert(String tableName, List<Map<String, Object>> rowList ,String[] cellNames) throws ParseException {
+	public void convert(String tableName, List<Map<String, Object>> rowList) throws ParseException {
 		for (Map<String, Object> rowMap : rowList) {
 			SqlParameterSource param = new MapSqlParameterSource(rowMap);
 			String sql = null;
 			try {
 				sql = getAddSql(tableName,rowMap);
-				System.out.println(sql);
-				//sql="insert into ZH (sensordd, ZH_source_HW_NH3N) values (:sensordd,:ZH_source_HW_NH3N)";
-				//zhdata.setSensorDd("2020-02-15 09:00:00");
-				//jdbcDao.updOne(sql, ZhData.class);
-				jtCTDB.update(sql, param);
+				scadaDao.update(sql, param);
 			} catch (DuplicateKeyException e) {
 				// logger.info("DuplicateKeyException-> rowMap:{}", rowMap);
-				sql = getUpdSql(tableName, rowMap);
-				jdbcDao.update(sql, param);
+				sql = getUpdSql(tableName,rowMap);
+				scadaDao.update(sql, param);
 			}
-             logger.info("sql-> {}", sql);
-			 logger.info("rowMap-> {}", rowMap);
+			logger.info("sql-> {}", sql);
+			logger.info("rowMap-> {}", rowMap);
 		}
 	}
-
 	 
 	private Date parseDate(String time) throws Exception {
 		try {
@@ -345,7 +329,8 @@ public class InputDataService {
 			i++;
 			fieldNameBuilder.append(key).append("=").append(":").append(key);
 		}
-		StringBuilder sqlSb = new StringBuilder("update scada_data.");
+		//StringBuilder sqlSb = new StringBuilder("update scada_data.");
+		StringBuilder sqlSb = new StringBuilder("update ");
 		sqlSb.append(tableName);
 		sqlSb.append(" set ");
 		sqlSb.append(fieldNameBuilder);
@@ -354,4 +339,23 @@ public class InputDataService {
 
 		return sqlSb.toString();
 	}
+	public void moveTo(String filePath) throws IOException {
+		moveTo(new File(filePath));
+	}
+	public void moveTo(File file) throws IOException {
+		String yyyymmdd = DateTimeUtils.date2Str(new Date(), DateTimeUtils.FORMAT_YYYYMMDD);
+
+		StringBuilder sb = new StringBuilder(filePathOfBak);
+		sb.append(separator).append(yyyymmdd);
+		String backupFolderPath = sb.toString();
+
+		File backupFolder = new File(backupFolderPath);
+		if (!backupFolder.exists()) {
+			backupFolder.mkdirs();
+		}
+
+		String backupFileName = new StringBuilder(backupFolderPath).append(separator).append(file.getName()).append(".").append(new Date().getTime()).toString();
+		Files.move(file, new File(backupFileName));
+	}
+	
 }

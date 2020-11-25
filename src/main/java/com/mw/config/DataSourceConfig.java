@@ -50,4 +50,7 @@ public class DataSourceConfig {
 		return new SimpleJdbcCall(hrauxDataSource());
 	}
 	
+	
+	  //======================================scada======================================
+	
 }
